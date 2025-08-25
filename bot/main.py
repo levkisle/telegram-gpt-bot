@@ -1,11 +1,11 @@
 import os
 import logging
+import asyncio
 from aiogram import Bot, Dispatcher, types
-from aiogram.utils import executor
 import openai
 from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
-# Настройка логирования
+# Логирование
 logging.basicConfig(level=logging.INFO)
 
 # Получаем токены из переменных окружения
@@ -14,7 +14,7 @@ OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
 
 bot = Bot(token=TELEGRAM_TOKEN)
-dp = Dispatcher(bot)
+dp = Dispatcher()
 
 openai.api_key = OPENAI_KEY
 
@@ -28,17 +28,14 @@ keyboard = ReplyKeyboardMarkup(
     ]
 )
 
-# Хэндлер /start
-@dp.message_handler(commands=["start"])
-async def start_handler(message: types.Message):
-    await message.answer("Привет! Выберите пункт меню:", reply_markup=keyboard)
-
-# Хэндлер кнопок
-@dp.message_handler(lambda message: message.text in ["📊 Аналитика", "📝 Создать пост",
-                                                   "⚙️ Настройки", "💡 Подсказка", "ℹ️ Помощь"])
+# /start и меню
+@dp.message()
 async def menu_handler(message: types.Message):
     text = message.text
-    if text == "📊 Аналитика":
+
+    if text == "/start":
+        await message.answer("Привет! Выберите пункт меню:", reply_markup=keyboard)
+    elif text == "📊 Аналитика":
         await message.answer("Здесь будет аналитика сообществ.")
     elif text == "📝 Создать пост":
         await message.answer("Здесь можно будет создать пост для соцсетей.")
@@ -49,18 +46,24 @@ async def menu_handler(message: types.Message):
     elif text == "💡 Подсказка":
         await message.answer("Напишите ваш вопрос, я передам его GPT.")
 
-        # Ставим бота в режим ожидания следующего сообщения как запроса к GPT
-        @dp.message_handler()
+        # Следующее сообщение пользователя будет отправлено в GPT
+        @dp.message()
         async def gpt_handler(msg: types.Message):
-            response = openai.ChatCompletion.create(
-                model=OPENAI_MODEL,
-                messages=[{"role": "user", "content": msg.text}]
-            )
-            answer = response['choices'][0]['message']['content']
-            await msg.answer(answer)
+            try:
+                response = openai.ChatCompletion.create(
+                    model=OPENAI_MODEL,
+                    messages=[{"role": "user", "content": msg.text}]
+                )
+                answer = response['choices'][0]['message']['content']
+                await msg.answer(answer)
+            except Exception as e:
+                await msg.answer(f"Произошла ошибка при обращении к GPT:\n{e}")
 
 # Запуск бота
-if __name__ == "__main__":
+async def main():
     print("Bot is starting...")
-    executor.start_polling(dp, skip_updates=True)
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
 
